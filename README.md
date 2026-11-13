@@ -1,4 +1,8 @@
 <p align="center">
+  <b>English</b> · <a href="README.zh-CN.md">简体中文</a>
+</p>
+
+<p align="center">
   <img src="assets/icon.png" width="96" alt="IGV Studio icon" />
 </p>
 

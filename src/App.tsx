@@ -1441,7 +1441,8 @@ export default function App() {
         {ir && (
           <>
             <span>标定 {ir.calibration ? `${ir.calibration.method} · ${ir.calibration.pxPerBp.toFixed(4)} px/bp` : '无'}</span>
-            {calib && !calib.ok && <span className="warn">禁止导出：{calib.blocking.join('；')}</span>}
+            {calib?.mode === 'visual' && <span className="warn">未标定坐标：仅排版模式（可导出，无标尺/裁剪语义）</span>}
+            {calib && calib.mode !== 'visual' && !calib.ok && <span className="warn">禁止导出：{calib.blocking.join('；') || '坐标标定冲突'}</span>}
             {calib?.ok && calib.warnings.length > 0 && <span className="warn">{calib.warnings.join('；')}（可导出，建议核对）</span>}
             <span>信号对象 {built?.metrics.signalNodes ?? 0}</span>
             <span>画布 {built ? `${built.metrics.widthPt.toFixed(1)} × ${built.metrics.heightPt.toFixed(1)} pt` : '-'}</span>
