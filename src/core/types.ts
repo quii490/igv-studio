@@ -84,6 +84,9 @@ export interface Diagnostics {
   gutterConfidence: 'high' | 'low';
   tickCount: number;
   warnings: string[];
+  /** element counts of the imported document, for diagnosing unsupported exports */
+  counts?: { rect: number; path: number; text: number; image: number; foreignObject: number };
+  signalBars?: number;
 }
 
 export interface PanelIR {

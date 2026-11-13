@@ -64,6 +64,12 @@ const heap = await page.send('Runtime.getHeapUsage');
 out.heapMB = +((heap.result?.usedSize ?? heap.usedSize) / 1048576).toFixed(1);
 out.domNodes = await page.evalJs(`document.querySelectorAll('*').length`);
 
+// 7. unsupported structure -> read-only raw fallback (no blank editor)
+const pathOnly = `<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" width="600" height="200"><rect width="600" height="200" fill="#fff"/><path d="M10 150 C80 20 160 20 260 150" fill="#123456"/><text x="10" y="30" font-size="14">chr14:1-100000</text></svg>`;
+await importText(pathOnly, 'path_only.svg');
+out.rawFallback = await page.evalJs(`(()=>{const b=[...document.querySelectorAll('button')].find(x=>x.textContent.includes('导出 SVG'));
+ return {banner: !!document.querySelector('.rawbanner'), raw: !!document.querySelector('.rawview svg'), editor: !!document.querySelector('.paperWrap'), exportEnabled: !b?.disabled};})()`);
+
 writeFileSync('docs/validation/e2e_edge.json', JSON.stringify(out, null, 2));
 console.log(JSON.stringify(out, null, 2));
 proc.kill('SIGKILL'); vite.kill('SIGTERM'); browser.ws.close();

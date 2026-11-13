@@ -120,11 +120,37 @@ export function fmtTick(bp: number): string {
   return `${bp.toLocaleString('en-US')} bp`;
 }
 
+/**
+ * Override histogram paint at the ACTUAL shape, not only on an ancestor <g>:
+ * a nested fill attribute or an inline `style="fill:…"` would win over a parent.
+ * Only bar-like rects are recoloured; axes, baselines and gene models have their
+ * own paint and are never touched here.
+ */
 function serializeNode(node: Node, paint: string | null): string {
   const clone = (node as Element).cloneNode(true) as Element;
   if (paint) {
+    const shapes: Element[] = [];
+    if (clone.localName === 'rect') shapes.push(clone);
+    clone.querySelectorAll('rect').forEach((r) => shapes.push(r));
+    for (const rect of shapes) {
+      const w = parseFloat(rect.getAttribute('width') ?? '');
+      const h = parseFloat(rect.getAttribute('height') ?? '');
+      const existing = rect.getAttribute('fill');
+      // thin vertical bars are the histogram; wide rects are backgrounds/panels
+      if (!(w > 0 && w <= 20 && h >= 1)) continue;
+      if (existing === 'none') continue;
+      rect.setAttribute('fill', paint);
+      if (rect.hasAttribute('style')) {
+        const remain = (rect.getAttribute('style') ?? '').split(';')
+          .filter((d) => !/^\s*fill\s*:/i.test(d));
+        rect.setAttribute('style', remain.join(';'));
+      }
+    }
+    // anything left without its own paint inherits the group value
     clone.removeAttribute('fill');
-    clone.querySelectorAll('[fill]').forEach((el) => el.removeAttribute('fill'));
+    if (!shapes.length) {
+      clone.querySelectorAll('[fill]').forEach((el) => el.removeAttribute('fill'));
+    }
   }
   return new XMLSerializer().serializeToString(clone);
 }

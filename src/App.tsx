@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { parseIGV, __debugDetectTicks } from './core/parser';
+import { parseIGV, sanitizeForDisplay, __debugDetectTicks } from './core/parser';
 import { buildSVG, buildAnnotationLayer, initialState, calibrationCheck, manualCalibration, niceStep, fmtTick } from './core/engine';
 import { applyPreset, FIGURE_R1_PRESET, type TemplateId } from './core/preset';
 import { shortLabel, parseMapping, type Mapping } from './core/labels';
@@ -24,11 +24,13 @@ export interface StudioDoc {
   id: string;
   name: string;
   svgText: string;
-  ir: PanelIR;
-  state: EditorState;
+  ir?: PanelIR;
+  state?: EditorState;
   history: History;
   selection: string[];
   warnings: string[];
+  /** parsed, but the signal structure is not something this adapter understands */
+  unsupported?: { reason: string; rawSvg: string; diag: Record<string, number | string> };
 }
 
 export default function App() {
@@ -68,6 +70,7 @@ export default function App() {
   const rawName = active?.name ?? '';
   const ir = active?.ir ?? null;
   const state = active?.state ?? null;
+  const unsupported = active?.unsupported ?? null;
   const history: History = active?.history ?? { past: [], future: [] };
   const selection = active?.selection ?? [];
 
@@ -166,18 +169,21 @@ export default function App() {
 
   const push = useCallback((next: EditorState) => {
     if (!state) return;
-    patchDoc((d) => ({ ...d, history: { past: [...d.history.past.slice(-49), d.state], future: [] }, state: next }));
+    const prev = state;
+    patchDoc((d) => ({ ...d, history: { past: [...d.history.past.slice(-49), prev], future: [] }, state: next }));
   }, [state, patchDoc]);
 
   const undo = useCallback(() => {
     if (!state || !history.past.length) return;
     const prev = history.past[history.past.length - 1];
-    patchDoc((doc) => ({ ...doc, history: { past: doc.history.past.slice(0, -1), future: [doc.state, ...doc.history.future].slice(0, 50) }, state: prev }));
+    const cur = state;
+    patchDoc((doc) => ({ ...doc, history: { past: doc.history.past.slice(0, -1), future: [cur, ...doc.history.future].slice(0, 50) }, state: prev }));
   }, [state, history, patchDoc]);
   const redo = useCallback(() => {
     if (!state || !history.future.length) return;
     const next = history.future[0];
-    patchDoc((doc) => ({ ...doc, history: { past: [...doc.history.past, doc.state].slice(-50), future: doc.history.future.slice(1) }, state: next }));
+    const cur2 = state;
+    patchDoc((doc) => ({ ...doc, history: { past: [...doc.history.past, cur2].slice(-50), future: doc.history.future.slice(1) }, state: next }));
   }, [state, history, patchDoc]);
 
   const patch = useCallback((p: Partial<EditorState>) => {
@@ -336,6 +342,33 @@ export default function App() {
         }
         if (!/\.svg$/i.test(file.name)) { rejected.push(file.name); continue; }
         const parsed = parseIGV(text);
+        const signalCount = parsed.tracks.reduce((a, t) => a + t.nodes.length, 0);
+        if (parsed.tracks.length === 0 || signalCount === 0) {
+          const rawSvg = sanitizeForDisplay(text);
+          if (!rawSvg) throw new Error('SVG 无法解析为可显示内容');
+          const c = parsed.diagnostics.counts;
+          nextDocs.push({
+            id: `doc-${Date.now()}-${nextDocs.length}-${Math.random().toString(36).slice(2, 7)}`,
+            name: file.name,
+            svgText: text,
+            history: { past: [], future: [] },
+            selection: [],
+            warnings: [],
+            unsupported: {
+              reason: parsed.diagnostics.warnings.join('；') || '未识别到信号轨道',
+              rawSvg,
+              diag: {
+                bytes: text.length,
+                tracks: parsed.tracks.length,
+                signalBars: parsed.diagnostics.signalBars ?? 0,
+                rects: c?.rect ?? 0, paths: c?.path ?? 0, texts: c?.text ?? 0,
+                images: c?.image ?? 0, foreignObjects: c?.foreignObject ?? 0,
+              },
+            },
+          });
+          await new Promise((r) => setTimeout(r, 0));
+          continue;
+        }
         const labels: Record<number, string> = {};
         parsed.tracks.forEach((t) => {
           if (t.rawLabel && mapping[t.rawLabel]) labels[t.id] = mapping[t.rawLabel];
@@ -362,6 +395,13 @@ export default function App() {
       }
     }
     setBusy(null);
+    nextDocs.forEach((d) => {
+      const c = d.ir?.diagnostics.counts;
+      const info = d.unsupported
+        ? { file: d.name, unsupported: d.unsupported.reason, ...d.unsupported.diag }
+        : { file: d.name, bytes: d.svgText.length, tracks: d.ir?.tracks.length, bars: d.ir?.diagnostics.signalBars, ...c };
+      console.info('[IGV Studio] import', info);
+    });
     if (nextDocs.length) {
       setDocs((ds) => [...ds, ...nextDocs]);
       setActiveId(nextDocs[0].id);
@@ -425,7 +465,15 @@ export default function App() {
 
   /* ---------- batch export ---------- */
   const exportDoc = useCallback((doc: StudioDoc): { name: string; svg: string; verify: Record<string, unknown> } | { name: string; error: string } => {
+    if (doc.unsupported) {
+      return {
+        name: `${doc.name.replace(/\.svg$/i, '')}.raw.svg`,
+        svg: doc.unsupported.rawSvg,
+        verify: { passthrough: true, reason: doc.unsupported.reason },
+      };
+    }
     try {
+      if (!doc.ir || !doc.state) throw new Error('document has no parsed state');
       const out = buildSVG(doc.ir, doc.state);
       const clean = out.svg.replace(/\sdata-(obj|kind|track|track-group|gene-layer|locked|ruler)="[^"]*"/g, '');
       // verify the produced file actually re-parses and still carries every signal object
@@ -463,12 +511,13 @@ export default function App() {
       while (used.has(name)) { name = r.name.replace(/\.svg$/, `-${i++}.svg`); }
       used.add(name);
       files[name] = strToU8(r.svg);
-      const calib = calibrationCheck(doc.ir);
-      if (!r.verify.verified) failed += 1;
+      const calib = doc.ir ? calibrationCheck(doc.ir) : null;
+      if (!r.verify.verified && !doc.unsupported) failed += 1;
       manifest.push({
-        name, source: doc.name, status: r.verify.verified ? 'ok' : 'signal-mismatch',
-        bytes: r.svg.length, calibration: calib.mode, blocking: calib.blocking, warnings: calib.warnings,
-        tracks: doc.ir.tracks.length, locus: doc.ir.locus, verify: r.verify,
+        name, source: doc.name, status: doc.unsupported ? 'raw-passthrough' : (r.verify.verified ? 'ok' : 'signal-mismatch'),
+        bytes: r.svg.length, calibration: calib?.mode ?? null, blocking: calib?.blocking ?? [], warnings: calib?.warnings ?? [],
+        tracks: doc.ir?.tracks.length ?? 0, locus: doc.ir?.locus ?? null, verify: r.verify,
+        unsupported: doc.unsupported?.reason ?? null,
       });
     });
     files['export_manifest.json'] = strToU8(JSON.stringify({ generatedAt: new Date().toISOString(), app: 'IGV Studio', documents: manifest }, null, 2));
@@ -671,7 +720,7 @@ export default function App() {
     if (d.kind === 'pan' && d.panPx && state && ir?.locus) {
       const s = d.panPx.s ?? state.cropStart ?? ir.locus.start;
       const en = d.panPx.en ?? state.cropEnd ?? ir.locus.end;
-      if (s !== (state.cropStart ?? ir.locus.start)) patchDoc((doc) => ({ ...doc, history: { past: [...doc.history.past.slice(-49), d.startState], future: [] }, state: { ...doc.state, cropStart: s, cropEnd: en } }));
+      if (s !== (state.cropStart ?? ir.locus.start)) patchDoc((doc) => ({ ...doc, history: { past: [...doc.history.past.slice(-49), d.startState], future: [] }, state: { ...(doc.state ?? state), cropStart: s, cropEnd: en } }));
       return;
     }
     if (d.kind === 'grip' && d.grip?.fs != null && state) {
@@ -681,7 +730,7 @@ export default function App() {
     if (d.kind === 'crop' && d.anchorBp != null && state) {
       const s = Math.min(d.anchorBp, d.lastBp ?? d.anchorBp), en = Math.max(d.anchorBp, d.lastBp ?? d.anchorBp);
       if (en - s > 30) {
-        patchDoc((doc) => ({ ...doc, history: { past: [...doc.history.past.slice(-49), d.startState], future: [] }, state: { ...doc.state, cropStart: Math.round(s), cropEnd: Math.round(en) } }));
+        patchDoc((doc) => ({ ...doc, history: { past: [...doc.history.past.slice(-49), d.startState], future: [] }, state: { ...(doc.state ?? d.startState), cropStart: Math.round(s), cropEnd: Math.round(en) } }));
       }
       return;
     }
@@ -692,7 +741,7 @@ export default function App() {
           const o = d.startState.objOffsets[id] ?? { dx: 0, dy: 0 };
           offsets[id] = { dx: o.dx + (d.dxPt ?? 0), dy: o.dy + (d.dyPt ?? 0) };
         });
-        patchDoc((doc) => ({ ...doc, history: { past: [...doc.history.past.slice(-49), d.startState], future: [] }, state: { ...doc.state, objOffsets: offsets } }));
+        patchDoc((doc) => ({ ...doc, history: { past: [...doc.history.past.slice(-49), d.startState], future: [] }, state: { ...(doc.state ?? d.startState), objOffsets: offsets } }));
         return;
       }
       patchDoc((doc) => ({ ...doc, history: { past: [...doc.history.past.slice(-49), d.startState], future: [] } }));
@@ -806,7 +855,7 @@ export default function App() {
     if (burst) window.clearTimeout(burst.timer);
     const timer = window.setTimeout(() => {
       wheelRef.current = null;
-      patchDoc((doc) => ({ ...doc, state: { ...doc.state, cropStart: ns, cropEnd: ne } }));
+      patchDoc((doc) => ({ ...doc, state: { ...(doc.state ?? state), cropStart: ns, cropEnd: ne } }));
       setGesturing(false);
       window.setTimeout(recentreIfFits, 60);
     }, 220);
@@ -825,11 +874,11 @@ export default function App() {
         if (e.shiftKey) {
           if (!history.future.length) return;
           const next = history.future[0];
-          patchDoc((doc) => ({ ...doc, history: { past: [...doc.history.past, doc.state].slice(-50), future: doc.history.future.slice(1) }, state: next }));
+          patchDoc((doc) => ({ ...doc, history: { past: [...doc.history.past, doc.state ?? state].slice(-50), future: doc.history.future.slice(1) }, state: next }));
         } else {
           if (!history.past.length) return;
           const prev = history.past[history.past.length - 1];
-          patchDoc((doc) => ({ ...doc, history: { past: doc.history.past.slice(0, -1), future: [doc.state, ...doc.history.future].slice(0, 50) }, state: prev }));
+          patchDoc((doc) => ({ ...doc, history: { past: doc.history.past.slice(0, -1), future: [doc.state ?? state, ...doc.history.future].slice(0, 50) }, state: prev }));
         }
         return;
       }
@@ -886,7 +935,7 @@ export default function App() {
   }, [built, fitZoom]);
 
   const calib = ir ? calibrationCheck(ir) : null;
-  const canExport = !!built && (calib?.ok === true || calib?.mode === 'visual');
+  const canExport = !!unsupported || (!!built && (calib?.ok === true || calib?.mode === 'visual'));
   const download = (name: string, content: string, mime: string) => {
     const url = URL.createObjectURL(new Blob([content], { type: mime }));
     const a = document.createElement('a'); a.href = url; a.download = name; a.click();
@@ -1067,6 +1116,11 @@ export default function App() {
   }, [bridge]);
 
   const exportSvg = () => {
+    if (unsupported) {
+      void saveAs(`${(rawName || 'panel').replace(/\.svg$/i, '')}.raw.svg`, unsupported.rawSvg);
+      setStatus({ kind: 'warn', text: '这张 SVG 未适配本编辑器，已按原图导出（未做任何修改）' });
+      return;
+    }
     if (!built || !ir) { setStatus({ kind: 'err', text: '还没有导入 SVG，无法导出' }); return; }
     if (!canExport) { setStatus({ kind: 'err', text: `拒绝导出：${calib?.blocking.join('；') || '坐标标定冲突'}` }); return; }
     try {
@@ -1108,7 +1162,13 @@ export default function App() {
           <button onClick={() => undo()} disabled={!history.past.length}>撤销</button>
           <button onClick={() => redo()} disabled={!history.future.length}>重做</button>
           <button disabled={!docs.length} title="把当前 FigureR1 模板应用到全部已导入文档"
-            onClick={() => { setDocs((ds) => ds.map((d) => ({ ...d, state: applyPreset(d.state, template, presetWidth), history: { past: [...d.history.past.slice(-49), d.state], future: [] } }))); setStatus({ kind: 'ok', text: `已把模板应用到 ${docs.length} 个文档` }); }}>全部套用</button>
+            onClick={() => {
+              setDocs((ds) => ds.map((d) => {
+                if (!d.state) return d;                       // raw fallback documents have no editable state
+                return { ...d, state: applyPreset(d.state, template, presetWidth), history: { past: [...d.history.past.slice(-49), d.state], future: [] } };
+              }));
+              setStatus({ kind: 'ok', text: `已把模板应用到 ${docs.filter((d) => d.state).length} 个文档` });
+            }}>全部套用</button>
           <select className="preset" value={template} onChange={(e) => { const t = e.target.value as TemplateId; setTemplate(t); if (state) push(applyPreset(state, t, presetWidth)); }} disabled={!state} title="FigureR1 样式模板">
             <option value="noOverlap">FigureR1 · 无遮挡</option>
             <option value="exact">FigureR1 · 精确复刻</option>
@@ -1133,17 +1193,20 @@ export default function App() {
                 onChange={(e) => setMappingText(e.target.value)} />
               <button disabled={!docs.length} onClick={() => {
                 const map = mappingText ? parseMapping(mappingText) : {};
-                setDocs((ds) => ds.map((d) => ({
+                setDocs((ds) => ds.map((d) => {
+                  if (!d.state || !d.ir) return d;
+                  return {
                   ...d,
                   state: {
                     ...d.state,
                     tracks: d.state.tracks.map((t) => {
-                      const src = d.ir.tracks.find((x) => x.id === t.id);
+                      const src = d.ir!.tracks.find((x) => x.id === t.id);
                       const raw = src?.rawLabel ?? t.label;
                       return { ...t, label: map[raw] ?? shortLabel(raw) };
                     }),
                   },
-                })));
+                  };
+                }));
               }}>重新应用映射</button>
             </details>
             <label className="openbtn folderbtn">
@@ -1166,8 +1229,8 @@ export default function App() {
                     onClick={() => { setActiveId(d.id); setEditing(null); }}>
                     <div className="docname" title={d.name}>{d.name}</div>
                     <div className="docmeta">
-                      {d.ir.tracks.length} 轨 · {Math.round(d.svgText.length / 1024)} KB ·
-                      {calibrationCheck(d.ir).mode === 'coordinate' ? (calibrationCheck(d.ir).ok ? ' 已标定' : ' 标定冲突') : ' 仅排版'}
+                      {d.unsupported ? '未适配 · 原图只读' : `${d.ir?.tracks.length ?? 0} 轨`} · {Math.round(d.svgText.length / 1024)} KB
+                      {!d.unsupported && d.ir && ` · ${calibrationCheck(d.ir).mode === 'coordinate' ? (calibrationCheck(d.ir).ok ? '已标定' : '标定冲突') : '仅排版'}`}
                     </div>
                     <button className="docx" title="移除" onClick={(e) => {
                       e.stopPropagation();
@@ -1227,7 +1290,7 @@ export default function App() {
                       const s0 = Number(manual.start || ir.locus?.start);
                       const e0 = Number(manual.end || ir.locus?.end);
                       const next = manualCalibration(ir, chr, s0, e0);
-                      patchDoc((doc) => ({ ...doc, ir: next, state: { ...doc.state, cropStart: s0, cropEnd: e0 } }));
+                      patchDoc((doc) => ({ ...doc, ir: next, state: { ...(doc.state ?? state!), cropStart: s0, cropEnd: e0 } }));
                       setStatus({ kind: 'warn', text: '已用手动区间标定（未交叉验证）' });
                     } catch (err) { setStatus({ kind: 'err', text: (err as Error).message }); }
                   }}>应用手动区间</button>
@@ -1279,8 +1342,22 @@ export default function App() {
               if (t.closest('[data-obj]') || t.closest('.grip') || t.closest('.selbox')) return;
               setSelection([]); setEditing(null);
             }}>
-            {!built && <div className="placeholder">拖入 IGV 导出的 SVG 开始</div>}
-            {built && (
+            {unsupported && (
+              <div className="rawfallback">
+                <div className="rawbanner">
+                  <b>当前 IGV writer 尚未支持这张 SVG 的信号结构</b>
+                  <span>{unsupported.reason}</span>
+                  <span className="tiny">
+                    {String(unsupported.diag.rects)} rect · {String(unsupported.diag.paths)} path · {String(unsupported.diag.texts)} text ·
+                    {' '}{String(unsupported.diag.tracks)} 轨 · {String(unsupported.diag.signalBars)} 细柱
+                  </span>
+                  <button onClick={exportSvg}>另存原始 SVG</button>
+                </div>
+                <div className="rawview" dangerouslySetInnerHTML={{ __html: unsupported.rawSvg }} />
+              </div>
+            )}
+            {!built && !unsupported && <div className="placeholder">拖入 IGV 导出的 SVG 开始</div>}
+            {built && !unsupported && (
               <div className="paperWrap" style={{
                 width: built ? `${built.metrics.widthPt * (96 / 72) * zoomPx}px` : '100%',
                 height: built ? `${built.metrics.heightPt * (96 / 72) * zoomPx}px` : undefined,
@@ -1359,7 +1436,7 @@ export default function App() {
                   setSelection(built.objects.filter((o) => o.kind === kind).map((o) => o.id));
                 }}>选择所有同类</button>
                 <button onClick={() => styleMany(selection, { visible: false })}>隐藏</button>
-                <button onClick={() => { if (state && ir) { patchDoc((doc) => ({ ...doc, history: { past: [...doc.history.past.slice(-49), doc.state], future: [] }, state: initialState(ir, Object.fromEntries(state.tracks.map((t) => [t.id, t.label]))), selection: [] })); } }}>重置全部</button>
+                <button onClick={() => { if (state && ir) { const st0 = state; patchDoc((doc) => ({ ...doc, history: { past: [...doc.history.past.slice(-49), st0], future: [] }, state: initialState(ir, Object.fromEntries(st0.tracks.map((t) => [t.id, t.label]))), selection: [] })); } }}>重置全部</button>
               </div>
               <div className="row2">
                 <button onClick={() => { const n = state!.objOffsets; const s = { ...n }; selection.forEach((id) => { s[id] = { dx: 0, dy: 0 }; }); push({ ...state!, objOffsets: s }); }}>归位</button>

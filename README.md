@@ -103,7 +103,7 @@ Handy keys: `⌘/Ctrl+Z` undo, `⇧⌘/Ctrl+Z` redo, arrow keys nudge the select
 
 **Track names** — IGV file names are often long. Use **轨道名映射** in the import panel to map them (one `file name, display name` per line, or a JSON object); the mapping is remembered between sessions. Without a mapping the app just strips common decorations (`_clean`, `_Filtered`, `_10bp`, `_rpgc`).
 
-**Multiple files** — every imported SVG becomes a document in the left list; switching keeps its own undo history, and **Apply to all** pushes the current template to every document.
+**Unsupported SVG** — if a file parses but has no recognisable signal tracks (a different IGV writer, path-based marks), the original drawing is shown read-only with a diagnostic banner; “Export SVG” then saves the untouched original instead of a blank editor.\n\n**Multiple files** — every imported SVG becomes a document in the left list; switching keeps its own undo history, and **Apply to all** pushes the current template to every document.
 
 ## Export
 

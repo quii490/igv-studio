@@ -124,6 +124,46 @@ function detectGutter(root: Element, canvasW: number): { x: number; confidence: 
   return { x: cands[0] ?? 0, confidence: 'low' };
 }
 
+/**
+ * SVG paint comes from the closest declaration (inline style or attribute), and
+ * Java/Batik commonly puts it on a parent <g>, not the leaf <rect>. Parsed
+ * documents are detached, so getComputedStyle() is not dependable here.
+ */
+export function inheritedPaint(el: Element, property: 'fill' | 'stroke'): string | null {
+  let current: Element | null = el;
+  while (current) {
+    for (const decl of (current.getAttribute('style') ?? '').split(';')) {
+      const pos = decl.indexOf(':');
+      if (pos === -1) continue;
+      if (decl.slice(0, pos).trim().toLowerCase() !== property) continue;
+      const value = decl.slice(pos + 1).trim().replace(/\s*!important\s*$/i, '');
+      if (value && value.toLowerCase() !== 'inherit') return value;
+    }
+    const attr = current.getAttribute(property);
+    if (attr && attr.toLowerCase() !== 'inherit') return attr.trim();
+    current = current.parentElement;
+  }
+  return null;
+}
+
+/** Convert an inherited CSS/SVG color to a #rrggbb the colour input can use. */
+export function canonicalColor(raw: string | null): string | null {
+  if (!raw) return null;
+  const s = raw.trim().toLowerCase();
+  if (s === 'none' || s === 'transparent' || s.startsWith('url(')) return null;
+  const named: Record<string, string> = {
+    black: '#000000', white: '#ffffff', red: '#ff0000', green: '#008000',
+    blue: '#0000ff', gray: '#808080', grey: '#808080', silver: '#c0c0c0', navy: '#000080',
+  };
+  if (named[s]) return named[s];
+  if (/^#[0-9a-f]{6}$/i.test(s)) return s;
+  if (/^#[0-9a-f]{3}$/i.test(s)) return '#' + s.slice(1).split('').map((c) => c + c).join('');
+  const m = /^rgba?\(\s*(\d+(?:\.\d+)?)\s*[,\s]+\s*(\d+(?:\.\d+)?)\s*[,\s]+\s*(\d+(?:\.\d+)?)/.exec(s);
+  if (!m) return null;
+  return '#' + m.slice(1, 4)
+    .map((v) => Math.max(0, Math.min(255, Math.round(Number(v)))).toString(16).padStart(2, '0')).join('');
+}
+
 interface Band { y0: number; y1: number; count: number; }
 
 function clusterBands(items: { y0: number; y1: number }[], gap = 2): Band[] {
@@ -205,6 +245,23 @@ export function bboxOfNode(node: Node): Box | null {
 
 export const __debugDetectTicks = (root: Element) => detectTicks(root);
 
+/** Remove anything executable or remote from a raw SVG before showing it read-only. */
+export function sanitizeForDisplay(raw: string): string {
+  const doc = new DOMParser().parseFromString(raw, 'image/svg+xml');
+  const root = doc.documentElement;
+  if (!root || root.nodeName === 'parsererror') return '';
+  root.querySelectorAll('script, foreignObject, iframe, object, embed, image').forEach((n) => n.remove());
+  root.querySelectorAll('*').forEach((el) => {
+    for (const a of Array.from(el.attributes)) {
+      const name = a.name.toLowerCase();
+      if (name.startsWith('on')) el.removeAttribute(a.name);
+      else if ((name === 'href' || name === 'xlink:href') && !a.value.trim().startsWith('#')) el.removeAttribute(a.name);
+      else if (name === 'style' && /url\(\s*['"]?(https?:)?\/\//i.test(a.value)) el.removeAttribute(a.name);
+    }
+  });
+  return new XMLSerializer().serializeToString(root);
+}
+
 export function parseIGV(rawInput: string): PanelIR {
   const { text, stripped } = stripDoctype(rawInput);
   const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
@@ -278,10 +335,18 @@ export function parseIGV(rawInput: string): PanelIR {
   const inherited = (el: Element): Record<string, string> => {
     const out: Record<string, string> = {};
     for (const a of INHERIT) {
+      if (a === 'fill' || a === 'stroke') {
+        const v = inheritedPaint(el, a);
+        if (v) out[a] = v;
+        continue;
+      }
       let node: Element | null = el;
-      while (node && node.getAttribute) {
-        const v = node.getAttribute(a);
-        if (v != null && v !== '' && v !== 'inherit') { out[a] = v; break; }
+      while (node) {
+        const fromStyle = (node.getAttribute('style') ?? '').split(';')
+          .map((d) => { const i = d.indexOf(':'); return i === -1 ? null : [d.slice(0, i).trim().toLowerCase(), d.slice(i + 1).trim()] as const; })
+          .find((d) => d && d[0] === a)?.[1];
+        const v = fromStyle || node.getAttribute(a);
+        if (v && v !== 'inherit') { out[a] = v; break; }
         node = node.parentElement;
       }
     }
@@ -371,11 +436,14 @@ export function parseIGV(rawInput: string): PanelIR {
     const yMaxMatch = rng ? /([\d.]+)\s*$/.exec(rng.text.replace(/[^\d.,\s-]/g, ' ').trim()) : null;
 
     const nodes = trackNodes[i];
+    // Count SOURCE bars, not the cloned wrapper <g>: the wrapper is not a rect,
+    // which is why every imported track used to report color = null.
     const fills = new Map<string, number>();
-    nodes.forEach((nd) => {
-      if ((nd as Element).localName !== 'rect') return;
-      const f = (nd as Element).getAttribute('fill') ?? '';
-      if (f && f !== 'none') fills.set(f, (fills.get(f) ?? 0) + 1);
+    bars.forEach(({ el, box }) => {
+      const cy = (box[1] + box[3]) / 2;
+      if (cy < band.y0 - 1 || cy > band.y1 + 1) return;
+      const color = canonicalColor(inheritedPaint(el, 'fill'));
+      if (color) fills.set(color, (fills.get(color) ?? 0) + 1);
     });
     const color = [...fills.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 
@@ -488,6 +556,14 @@ export function parseIGV(rawInput: string): PanelIR {
     tracks,
     genes,
     diagnostics: {
+      counts: {
+        rect: root.querySelectorAll('rect').length,
+        path: root.querySelectorAll('path').length,
+        text: root.querySelectorAll('text').length,
+        image: root.querySelectorAll('image').length,
+        foreignObject: root.querySelectorAll('foreignObject').length,
+      },
+      signalBars: bars.length,
       doctypeStripped: stripped,
       entityRejected: false,
       canvasSource: canvas.source,

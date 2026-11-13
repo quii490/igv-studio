@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.0.1 — 2026-11-14
+
+**Fixed**
+- Imported tracks reported `color = null`: the colour histogram was read from cloned
+  wrapper `<g>` nodes instead of the source histogram bars. Source colours (attribute
+  or inline `style`) are now resolved through the ancestor chain and normalised to `#rrggbb`.
+- Recolouring a track could be silently overridden by a nested `fill` or inline
+  `style="fill:…"`. Bars are now recoloured at the shape itself; axes, baselines and
+  gene models keep their own paint.
+- An SVG that parses but has no recognisable signal tracks no longer produces a blank
+  editor: the original drawing is shown read-only with a diagnostic banner, and
+  “Export SVG” saves the untouched original.
+
+**Added**
+- Import diagnostics: element counts (rect / path / text / image / foreignObject),
+  track and bar counts, and the reason for unsupported files, shown in the banner and
+  logged once per import.
+
+
 ## 2.0.0 — 2026-11
 
 Tauri 2 desktop rewrite, sharing the same React frontend and SVG engine.

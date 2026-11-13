@@ -1,7 +1,7 @@
 {
   "name": "igv-single-svg-studio",
   "private": true,
-  "version": "2.0.0",
+  "version": "2.0.1",
   "type": "module",
   "description": "IGV Single SVG Studio — desktop editor for publication-grade IGV vector figures",
   "author": "IGV Studio",
@@ -27,7 +27,7 @@
     "test:batch": "node scripts/e2e-batch.mjs",
     "test:layers": "node scripts/e2e-layers.mjs",
     "test:zoom": "node scripts/test-zoom-stability.mjs",
-    "perf:15": "FIXTURE=fixtures/panel_15tracks_stress.svg OUT=reports/perf_15tracks.json node scripts/perf-v2.mjs",
+    "perf:15": "FIXTURE=fixtures/panel_15tracks_stress.svg OUT=docs/validation/perf_15tracks.json node scripts/perf-v2.mjs",
     "record": "node scripts/record-demo.mjs",
     "test:electron": "node scripts/e2e-electron.mjs",
     "test:canvas-zoom": "node scripts/e2e-canvas-zoom.mjs",
@@ -40,7 +40,9 @@
     "tauri:build:x64": "tauri build --target x86_64-apple-darwin --bundles app",
     "bench:electron": "node scripts/bench-electron.mjs",
     "bench:coldstart": "node scripts/bench-coldstart.mjs",
-    "build:selftest": "tsc --noEmit && vite build --mode selftest"
+    "build:selftest": "tsc --noEmit && vite build --mode selftest",
+    "test:audit": "node scripts/e2e-audit.mjs",
+    "test:edge": "node scripts/e2e-edge.mjs"
   },
   "dependencies": {
     "@svgedit/svgcanvas": "^7.4.2",
