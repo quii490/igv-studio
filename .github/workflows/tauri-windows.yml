@@ -1,0 +1,114 @@
+name: tauri-windows-x64
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Build Windows x64 (NSIS, unsigned test build)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Rust (MSVC)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build frontend (shared with Electron build, no test harness)
+        env:
+          VITE_BUILD_ID: ${{ github.sha }}
+        run: npm run build
+
+      - name: Assert production frontend has no dev harness
+        shell: pwsh
+        run: |
+          $hit = Select-String -Path dist/assets/*.js -Pattern '__studioBench|__studioSelftest' -SimpleMatch
+          if ($hit) { throw "dev harness leaked into production bundle" }
+          "production bundle clean"
+
+      - name: Build Tauri app + NSIS installer
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: .
+          args: --target x86_64-pc-windows-msvc --bundles nsis
+          tauriScript: npx tauri
+
+      - name: Collect artifacts, hashes and version info
+        run: |
+          $bundle = "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis"
+          New-Item -ItemType Directory -Force -Path dist-artifacts | Out-Null
+          Copy-Item "$bundle/*.exe" dist-artifacts/ -ErrorAction SilentlyContinue
+          $app = "src-tauri/target/x86_64-pc-windows-msvc/release/igv-studio.exe"
+          $lines = @()
+          $exe = Get-ChildItem "$bundle/*.exe" | Select-Object -First 1
+          if (-not $exe) { throw "NSIS installer not found in $bundle" }
+          $lines += "$((Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower())  $($exe.Name)"
+          if (Test-Path $app) {
+            Copy-Item $app dist-artifacts/igv-studio-portable.exe
+            $lines += "$((Get-FileHash $app -Algorithm SHA256).Hash.ToLower())  igv-studio-portable.exe"
+          } else { Write-Warning "portable exe not found at $app" }
+          $lines | Out-File -Encoding utf8 dist-artifacts/SHA256SUMS.txt
+          $info = [ordered]@{
+            product      = "IGV Studio"
+            version      = "2.0.0"
+            runtime      = "tauri-2"
+            target       = "x86_64-pc-windows-msvc"
+            installer    = "nsis"
+            webview2     = "downloadBootstrapper (no offline runtime bundled)"
+            signed       = $false
+            built_by     = "$env:GITHUB_ACTOR@$env:GITHUB_SHA"
+            run_id       = "$env:GITHUB_RUN_ID"
+            source_commit= "$env:GITHUB_SHA"
+            test_hooks   = $false
+            runner_image = "$env:ImageOS"
+          }
+          $info | ConvertTo-Json | Out-File -Encoding utf8 dist-artifacts/VERSION.json
+          Get-ChildItem dist-artifacts | Format-Table Name,Length
+
+      - name: Verify WebView2 install mode is bootstrapper (not offline)
+        run: |
+          $conf = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          $mode = $conf.bundle.windows.webviewInstallMode.type
+          if ($mode -ne 'downloadBootstrapper') { throw "webviewInstallMode is '$mode', expected downloadBootstrapper" }
+          "WebView2 install mode: $mode"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: igv-studio-windows-x64-unsigned
+          path: dist-artifacts/**
+          retention-days: 30
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: |
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.log
+          if-no-files-found: ignore
+          retention-days: 7

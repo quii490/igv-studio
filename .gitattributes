@@ -1,0 +1,8 @@
+# Generated/bundled artefacts should not dominate the language breakdown.
+IGV-Single-SVG-Studio.html linguist-generated=true
+dist/** linguist-generated=true
+docs/validation/** linguist-documentation=true
+*.md linguist-documentation=false
+*.icns binary
+*.ico binary
+*.dmg binary

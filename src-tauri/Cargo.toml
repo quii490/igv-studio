@@ -1,0 +1,32 @@
+[package]
+name = "igv-studio"
+version = "2.0.0"
+edition = "2021"
+description = "IGV Studio"
+
+[lib]
+name = "igv_studio_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[features]
+default = []
+# Enables the env-var driven test hooks (save/open without dialogs, in-app bench/self-test).
+# Never enable this for a distributed build.
+test-hooks = []
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rfd = "0.15"
+tauri-plugin-single-instance = "2"
+base64 = "0.22"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

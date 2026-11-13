@@ -1,0 +1,39 @@
+appId: org.igvstudio.app
+productName: IGV Studio
+copyright: IGV Studio
+directories:
+  app: build-app
+  output: release
+  buildResources: build
+files:
+  - electron/**/*
+  - dist/IGV-Single-SVG-Studio.html
+  - package.json
+asar: true
+afterPack: scripts/after-pack-win.mjs
+mac:
+  category: public.app-category.graphics-design
+  target:
+    - dmg
+    - zip
+  icon: build/icon.icns
+  darkModeSupport: true
+win:
+  target:
+    - nsis
+  icon: build/icon.ico
+  signAndEditExecutable: false
+dmg:
+  icon: build/icon.icns
+  iconSize: 128
+  contents:
+    - x: 140
+      y: 200
+    - x: 400
+      y: 200
+      type: link
+      path: /Applications
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true

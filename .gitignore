@@ -1,0 +1,19 @@
+node_modules/
+dist/
+release/
+build-app/
+target/
+src-tauri/target/
+*.log
+.DS_Store
+archive/
+
+# built single-file bundle (regenerate with npm run standalone)
+IGV-Single-SVG-Studio.html
+
+# private test data (unpublished lab samples)
+fixtures/*.svg
+fixtures/*.xml
+
+# generated validation output (contains local fixture data)
+docs/validation/
