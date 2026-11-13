@@ -2,6 +2,8 @@
 /** T8: exported SVG -> PDF (Chrome print) -> text must still be selectable. */
 import { spawn } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'node:fs';
+import { mkdirSync as __mkdir } from 'node:fs';
+try { __mkdir('docs/validation', { recursive: true }); } catch {}
 import path from 'node:path';
 
 const ROOT = process.cwd();

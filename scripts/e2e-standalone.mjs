@@ -3,6 +3,8 @@
 import { launch, newPage } from './cdp.mjs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { writeFileSync } from 'node:fs';
+import { mkdirSync as __mkdir } from 'node:fs';
+try { __mkdir('docs/validation', { recursive: true }); } catch {}
 import path from 'node:path';
 
 const CWD = process.cwd();

@@ -4,6 +4,8 @@ import { launch, newPage, config } from './cdp.mjs';
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { writeFileSync, readFileSync, readdirSync, mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync as __mkdir } from 'node:fs';
+try { __mkdir('docs/validation', { recursive: true }); } catch {}
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 

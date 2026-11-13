@@ -9,6 +9,8 @@ import { launch, newPage, config } from './cdp.mjs';
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { readdirSync, existsSync, writeFileSync, statSync, rmSync } from 'node:fs';
+import { mkdirSync as __mkdir } from 'node:fs';
+try { __mkdir('docs/validation', { recursive: true }); } catch {}
 import path from 'node:path';
 
 const DL = '/tmp/igv-real-dl';

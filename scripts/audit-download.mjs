@@ -4,6 +4,8 @@ import { launch, newPage, config } from './cdp.mjs';
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { readdirSync, existsSync, writeFileSync, statSync, rmSync } from 'node:fs';
+import { mkdirSync as __mkdir } from 'node:fs';
+try { __mkdir('docs/validation', { recursive: true }); } catch {}
 
 rmSync('/tmp/igv-dl', { recursive: true, force: true });
 const vite = spawn('npx', ['vite', '--port', '5199', '--strictPort'], { cwd: process.cwd(), stdio: 'ignore' });

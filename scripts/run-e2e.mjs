@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
+import { mkdirSync as __mkdir } from 'node:fs';
+try { __mkdir('docs/validation', { recursive: true }); } catch {}
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
