@@ -434,15 +434,15 @@ export default function App() {
       const files = Array.from(e.dataTransfer?.files ?? []);
       if (files.length) void importFiles(files);
     };
-    window.addEventListener('dragenter', enter);
-    window.addEventListener('dragover', over);
-    window.addEventListener('dragleave', leave);
-    window.addEventListener('drop', drop);
+    window.addEventListener('dragenter', enter, true);
+    window.addEventListener('dragover', over, true);
+    window.addEventListener('dragleave', leave, true);
+    window.addEventListener('drop', drop, true);
     return () => {
-      window.removeEventListener('dragenter', enter);
-      window.removeEventListener('dragover', over);
-      window.removeEventListener('dragleave', leave);
-      window.removeEventListener('drop', drop);
+      window.removeEventListener('dragenter', enter, true);
+      window.removeEventListener('dragover', over, true);
+      window.removeEventListener('dragleave', leave, true);
+      window.removeEventListener('drop', drop, true);
     };
   }, [importFiles]);
 
@@ -457,6 +457,7 @@ export default function App() {
         setDragOver(false);
         const items = await bridge.readPaths(paths);
         if (items.length) await importPayloads(items);
+        else setStatus({ kind: 'err', text: `拖入的 ${paths.length} 个文件无法读取（路径为空或不是文本文件）` });
       },
     });
   }, [bridge, importPayloads]);
