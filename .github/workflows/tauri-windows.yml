@@ -74,7 +74,7 @@ jobs:
           $lines | Out-File -Encoding utf8 dist-artifacts/SHA256SUMS.txt
           $info = [ordered]@{
             product      = "IGV Studio"
-            version      = "2.0.0"
+            version      = (Get-Content package.json -Raw | ConvertFrom-Json).version
             runtime      = "tauri-2"
             target       = "x86_64-pc-windows-msvc"
             installer    = "nsis"
