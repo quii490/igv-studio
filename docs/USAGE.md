@@ -64,7 +64,7 @@ Session XML ──(生成 batch 脚本)──▶ IGV 渲染 ──snapshot .svg�
 ### 拖入 XML 后能做什么
 
 1. 左侧会多出 **Session** 面板，显示 `mm10 · 15 轨 · chr14:…`。
-2. **「套用轨道名/顺序」**：按 session 顺序把 15 条轨道改名为 `IgG-rep1`、`KDM5A-rep1`…（用文件名映射规则）。
+2. **「套用轨道名/顺序」**：按 session 顺序把 15 条轨道改名。改名前先在左侧「轨道名映射」里按行填写 `文件名, 显示名`（例如 `example.bw, IgG-rep1`），映射会被记住。
 3. **「套用 session 颜色」**：用 session 里的颜色覆盖——**注意这会替换掉 FigureR1 参考配色**，一般不用点。
 4. **「生成 IGV batch 脚本」→ 下载 batch.txt**：拿去 IGV 的 `Tools → Run Batch Script` 跑，就会在你指定的 locus 上 `snapshot` 出 SVG。脚本里需要你填两处：`<SESSION_XML>` 的绝对路径、`snapshotDirectory` 输出目录。
 

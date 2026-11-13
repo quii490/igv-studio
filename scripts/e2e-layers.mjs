@@ -37,7 +37,8 @@ const after = await page.evalJs(`(()=>{const svg=document.querySelector('.paper 
 
 // export still reflects the new style
 const exported = await page.evalJs(`window.__studioExport()`);
-const m = exported.match(/<text[^>]*>IgG-rep1<\/text>/);
+const labelText = await page.evalJs(`document.querySelector('[data-obj="label:0"]')?.textContent ?? ''`);
+const m = exported.match(new RegExp(`<text[^>]*>${labelText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</text>`));
 const exportFs = m ? (m[0].match(/font-size="([^"]+)"/) || [])[1] : null;
 const report = { before, after, exportFs, exportLen: exported.length, exportHead: (m ? m[0] : exported.slice(0, 120)), ok: after.sameSvg && after.sameRect && after.builds === before.builds && after.fs === '8' && exportFs === '8' };
 writeFileSync('docs/validation/e2e_layers.json', JSON.stringify(report, null, 2));

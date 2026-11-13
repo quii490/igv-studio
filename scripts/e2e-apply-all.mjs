@@ -17,8 +17,8 @@ await sleep(1400);
 
 const base = readFileSync(path.join(CWD, 'fixtures/panel_igv2198.svg'), 'utf8');
 const a = '/tmp/apply_a.svg', b = '/tmp/apply_b.svg';
-writeFileSync(a, base.replace('SAMPLE_clean', 'SAMPLEA_clean'));
-writeFileSync(b, base.replace('SAMPLE_clean', 'SAMPLEB_clean'));
+writeFileSync(a, base + '<!-- variant A -->');
+writeFileSync(b, base + '<!-- variant B -->');
 for (const f of [a, b]) {
   const data = { items: [], files: [f], dragOperationsMask: 1 };
   await page.send('Input.dispatchDragEvent', { type: 'dragEnter', x: 500, y: 400, data });

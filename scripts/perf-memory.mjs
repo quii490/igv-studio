@@ -26,7 +26,7 @@ const nodes = () => page.evalJs(`document.querySelectorAll('*').length`);
 const base = readFileSync(path.join(CWD, 'fixtures/panel_igv2198.svg'), 'utf8');
 const files = ['M1', 'M2', 'M3', 'M4', 'M5', 'M6'].map((t) => {
   const p = `/tmp/mem_${t}.svg`;
-  writeFileSync(p, base.replace('SAMPLE_clean', `SAMPLE${t}_clean`));
+  writeFileSync(p, base + `<!-- mem ${t} -->`);
   return p;
 });
 

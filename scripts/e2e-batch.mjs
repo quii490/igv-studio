@@ -24,7 +24,7 @@ const fixture = path.resolve(CWD, 'fixtures/panel_igv2198.svg');
 const base = readFileSync(fixture, 'utf8');
 const variants = ['A', 'B', 'C'].map((tag, i) => {
   const p = `/tmp/panel_variant_${tag}.svg`;
-  writeFileSync(p, base.replace('SAMPLE_clean_Filtered_10bp_rpgc', `SAMPLE${tag}_clean_Filtered_10bp_rpgc`));
+  writeFileSync(p, base + `<!-- variant ${tag} -->`);
   return p;
 });
 for (let i = 0; i < variants.length; i++) {

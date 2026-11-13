@@ -22,7 +22,7 @@ const svgText = fsMod.readFileSync(fixture, 'utf8');
 // distinct content per drop, otherwise the duplicate filter (correctly) skips them
 const variants = ['P1', 'P2', 'P3', 'P4', 'P5'].map((t) => {
   const f = `/tmp/panel_drop_${t}.svg`;
-  fsMod.writeFileSync(f, svgText.replace('SAMPLE_clean_Filtered_10bp_rpgc', `SAMPLE${t}_clean_Filtered_10bp_rpgc`));
+  fsMod.writeFileSync(f, svgText + `<!-- variant ${t} -->`);
   return f;
 });
 
@@ -45,8 +45,8 @@ for (const [name, fx, fy] of [['左上', 0.03, 0.03], ['右上', 0.97, 0.03], ['
 
 // multi-file drop
 const data = { items: [], files: ['/tmp/panel_drop_m1.svg', '/tmp/panel_drop_m2.svg'], dragOperationsMask: 1 };
-fsMod.writeFileSync('/tmp/panel_drop_m1.svg', svgText.replace('SAMPLE_clean', 'SAMPLEM1_clean'));
-fsMod.writeFileSync('/tmp/panel_drop_m2.svg', svgText.replace('SAMPLE_clean', 'SAMPLEM2_clean'));
+fsMod.writeFileSync('/tmp/panel_drop_m1.svg', svgText + '<!-- multi 1 -->');
+fsMod.writeFileSync('/tmp/panel_drop_m2.svg', svgText + '<!-- multi 2 -->');
 await page.send('Input.dispatchDragEvent', { type: 'dragEnter', x: 700, y: 400, data });
 await page.send('Input.dispatchDragEvent', { type: 'dragOver', x: 700, y: 400, data });
 await page.send('Input.dispatchDragEvent', { type: 'drop', x: 700, y: 400, data });
